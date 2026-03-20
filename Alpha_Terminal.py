@@ -1,10 +1,13 @@
 """
 Alpha Terminal — Professional Stock Intelligence Dashboard
-Fonts: IBM Plex Mono (data/labels) + Manrope (body/headings)
+Fonts : IBM Plex Mono (data/labels) + Manrope (body/headings)
+Fix   : Custom User-Agent headers + fast_info fallback
+        so fundamentals load correctly on Streamlit Cloud
 """
 import warnings
 warnings.filterwarnings("ignore")
 
+import requests
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -25,7 +28,7 @@ st.set_page_config(
 )
 
 # ═══════════════════════════════════════════════
-#  GLOBAL CSS  — IBM Plex Mono + Manrope
+#  GLOBAL CSS — IBM Plex Mono + Manrope
 # ═══════════════════════════════════════════════
 st.markdown("""
 <style>
@@ -33,12 +36,10 @@ st.markdown("""
 
 html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
 
-/* ── App background ─────────────────── */
 [data-testid="stAppViewContainer"] { background: #060b14; }
 [data-testid="block-container"]    { padding-top: 0; padding-bottom: 1rem; }
 .main { background: #060b14; }
 
-/* ── Sidebar ────────────────────────── */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #070d1a 0%, #080f1f 100%);
     border-right: 1px solid rgba(100,255,218,.08);
@@ -52,7 +53,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     text-transform: uppercase;
 }
 
-/* ── Hero top bar ───────────────────── */
 .hero-bar {
     background: linear-gradient(135deg, #070d1a 0%, #0c1628 50%, #070d1a 100%);
     border-bottom: 1px solid rgba(100,255,218,.1);
@@ -103,7 +103,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
 }
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
 
-/* ── Stock header card ──────────────── */
 .stock-header {
     background: linear-gradient(135deg, #0a1628 0%, #0d1f3c 100%);
     border: 1px solid rgba(255,255,255,.06);
@@ -180,7 +179,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     color: #c084fc;
 }
 
-/* ── Metric cards ───────────────────── */
 .mcard {
     background: #0a1628;
     border: 1px solid rgba(255,255,255,.05);
@@ -210,7 +208,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     margin-top: 2px;
 }
 
-/* ── Section headers ────────────────── */
 .section-hdr {
     font-family: 'IBM Plex Mono', monospace;
     font-size: .62rem;
@@ -232,24 +229,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     background: linear-gradient(90deg, rgba(100,255,218,.12), transparent);
 }
 
-/* ── Panel cards ────────────────────── */
-.panel {
-    background: #0a1628;
-    border: 1px solid rgba(255,255,255,.05);
-    border-radius: 12px;
-    padding: 18px 20px;
-    height: 100%;
-}
-.panel-title {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: .6rem;
-    color: #475569;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    margin-bottom: 12px;
-}
-
-/* ── Progress bar ───────────────────── */
 .prog-row {
     display: flex;
     align-items: center;
@@ -280,7 +259,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     text-align: right;
 }
 
-/* ── News cards ─────────────────────── */
 .news-item {
     padding: 11px 0;
     border-bottom: 1px solid rgba(255,255,255,.04);
@@ -302,7 +280,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     color: #334155;
 }
 
-/* ── About text ─────────────────────── */
 .about-text {
     font-family: 'Manrope', sans-serif;
     font-size: .86rem;
@@ -311,7 +288,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     line-height: 1.8;
 }
 
-/* ── 52-week range ──────────────────── */
 .range-row {
     display: flex;
     align-items: center;
@@ -333,7 +309,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     transform: translateX(-50%);
 }
 
-/* ── Welcome screen ─────────────────── */
 .welcome-screen {
     display: flex;
     flex-direction: column;
@@ -393,7 +368,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     line-height: 1.5;
 }
 
-/* ── Tabs ───────────────────────────── */
 [data-baseweb="tab-list"] {
     background: transparent !important;
     border-bottom: 1px solid rgba(255,255,255,.06) !important;
@@ -416,7 +390,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     border-bottom: 2px solid #64ffda !important;
 }
 
-/* ── Streamlit metric overrides ──────── */
 [data-testid="stMetric"] {
     background: #0a1628;
     border: 1px solid rgba(255,255,255,.05);
@@ -440,7 +413,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
     font-family: 'IBM Plex Mono', monospace !important;
     font-size: .73rem !important;
 }
-
 div[data-testid="stSelectbox"] > div > div {
     background: #0a1628 !important;
     border: 1px solid rgba(100,255,218,.14) !important;
@@ -448,7 +420,6 @@ div[data-testid="stSelectbox"] > div > div {
     color: #e2e8f0 !important;
     font-family: 'Manrope', sans-serif !important;
 }
-
 p, li { color: #94a3b8; font-family: 'Manrope', sans-serif; }
 h1,h2,h3,h4 { color: #e2e8f0; font-family: 'Manrope', sans-serif; }
 ::-webkit-scrollbar { width: 4px; }
@@ -500,35 +471,113 @@ PERIOD_MAP = {
     "5 Years":  ("5y",  "1mo"),
 }
 
+BG, PAPER, GRID = "#060b14", "#0a1628", "#1e293b"
+MONO = "IBM Plex Mono"
+SANS = "Manrope"
+
+# ─────────────────────────────────────────────────────────
+#  SHARED SESSION — one requests.Session with browser
+#  headers reused across all yfinance calls so Yahoo Finance
+#  does not block the Streamlit Cloud server IP
+# ─────────────────────────────────────────────────────────
+def _make_session():
+    s = requests.Session()
+    s.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection":      "keep-alive",
+    })
+    return s
+
+YF_SESSION = _make_session()
+
 
 # ═══════════════════════════════════════════════
-#  DATA FETCHERS
+#  DATA FETCHERS  ← ALL FIXED FOR STREAMLIT CLOUD
 # ═══════════════════════════════════════════════
+
+# ── fetch_info ─────────────────────────────────
+# FIX: Uses custom browser User-Agent so Yahoo Finance
+#      returns data instead of empty dict on cloud servers.
+#      Falls back to fast_info if .info is still empty.
+# ───────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_info(ticker):
     try:
-        return yf.Ticker(ticker).info or {}
+        tk   = yf.Ticker(ticker, session=YF_SESSION)
+        info = tk.info
+
+        # If info came back with useful data, return it
+        if info and len(info) > 10:
+            return info
+
+        # Fallback: build a minimal dict from fast_info
+        # fast_info is a lighter endpoint, usually works even when .info fails
+        result = {}
+        try:
+            fi = tk.fast_info
+            result["currentPrice"]      = float(fi.last_price)       if fi.last_price      else None
+            result["previousClose"]     = float(fi.previous_close)   if fi.previous_close  else None
+            result["marketCap"]         = float(fi.market_cap)       if fi.market_cap      else None
+            result["fiftyTwoWeekHigh"]  = float(fi.year_high)        if fi.year_high       else None
+            result["fiftyTwoWeekLow"]   = float(fi.year_low)         if fi.year_low        else None
+            result["volume"]            = float(fi.last_volume)      if fi.last_volume     else None
+            result["currency"]          = str(fi.currency)           if fi.currency        else "USD"
+        except Exception:
+            pass
+
+        # Merge fast_info values into whatever .info returned
+        for k, v in result.items():
+            if k not in info or info[k] is None:
+                info[k] = v
+
+        return info if info else result
+
     except Exception:
         return {}
 
 
+# ── fetch_history ──────────────────────────────
+# FIX: Same User-Agent session + yf.download fallback
+#      if .history() returns empty DataFrame
+# ───────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_history(ticker, period="1y", interval="1d"):
     try:
-        df = yf.Ticker(ticker).history(period=period, interval=interval)
+        tk = yf.Ticker(ticker, session=YF_SESSION)
+        df = tk.history(period=period, interval=interval)
+
+        # If history is empty try yf.download as fallback
+        if df is None or df.empty:
+            df = yf.download(
+                ticker, period=period, interval=interval,
+                progress=False, auto_adjust=True, actions=False,
+            )
+
+        if df is None or df.empty:
+            return pd.DataFrame()
+
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         if hasattr(df.index, "tz") and df.index.tz is not None:
             df.index = df.index.tz_localize(None)
         return df.dropna()
+
     except Exception:
         return pd.DataFrame()
 
 
+# ── fetch_financials ───────────────────────────
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_financials(ticker):
     try:
-        tk = yf.Ticker(ticker)
+        tk = yf.Ticker(ticker, session=YF_SESSION)
         return {
             "income":   tk.income_stmt,
             "balance":  tk.balance_sheet,
@@ -538,10 +587,11 @@ def fetch_financials(ticker):
         return {}
 
 
+# ── fetch_news ─────────────────────────────────
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_news(ticker):
     try:
-        news    = yf.Ticker(ticker).news or []
+        news    = yf.Ticker(ticker, session=YF_SESSION).news or []
         results = []
         now_ts  = datetime.now().timestamp()
         for item in news[:12]:
@@ -578,7 +628,7 @@ def fetch_news(ticker):
 # ═══════════════════════════════════════════════
 def fmt_large(n):
     if n is None or (isinstance(n, float) and np.isnan(n)):
-        return "N/A"
+        return "—"
     n = float(n)
     if abs(n) >= 1e12: return "${:.2f}T".format(n/1e12)
     if abs(n) >= 1e9:  return "${:.2f}B".format(n/1e9)
@@ -588,23 +638,19 @@ def fmt_large(n):
 
 def fmt_num(n, decimals=2):
     if n is None or (isinstance(n, float) and np.isnan(n)):
-        return "N/A"
+        return "—"
     return "{:.{}f}".format(float(n), decimals)
 
 
-def safe_get(info, key, default="N/A"):
+# FIX: Returns "—" (dash) instead of "N/A" or blank
+#      so the UI looks clean even when data is missing
+def safe_get(info, key, default="—"):
     val = info.get(key, default)
-    if val is None or val == "" or (isinstance(val, float) and np.isnan(val)):
-        return "N/A"
+    if val is None or val == "" or val == "N/A":
+        return "—"
+    if isinstance(val, float) and np.isnan(val):
+        return "—"
     return val
-
-
-# ═══════════════════════════════════════════════
-#  CHART CONSTANTS
-# ═══════════════════════════════════════════════
-BG, PAPER, GRID = "#060b14", "#0a1628", "#1e293b"
-MONO = "IBM Plex Mono"
-SANS = "Manrope"
 
 
 # ═══════════════════════════════════════════════
@@ -615,10 +661,8 @@ def candlestick_chart(df, ticker, period_label):
         return None
     up_c, dn_c = "#64ffda", "#ff6b6b"
     fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.03,
-        row_heights=[0.72, 0.28],
+        rows=2, cols=1, shared_xaxes=True,
+        vertical_spacing=0.03, row_heights=[0.72, 0.28],
     )
     fig.add_trace(go.Candlestick(
         x=df.index,
@@ -628,7 +672,6 @@ def candlestick_chart(df, ticker, period_label):
         decreasing_line_color=dn_c, decreasing_fillcolor=dn_c,
         name="Price", showlegend=False,
     ), row=1, col=1)
-
     if len(df) >= 20:
         fig.add_trace(go.Scatter(
             x=df.index, y=df["Close"].rolling(20).mean(),
@@ -641,20 +684,15 @@ def candlestick_chart(df, ticker, period_label):
             mode="lines", name="MA 50",
             line=dict(color="rgba(251,191,36,.75)", width=1.5),
         ), row=1, col=1)
-
     vol_colors = [
         up_c if float(df["Close"].iloc[i]) >= float(df["Open"].iloc[i])
-        else dn_c
-        for i in range(len(df))
+        else dn_c for i in range(len(df))
     ]
     fig.add_trace(go.Bar(
         x=df.index, y=df["Volume"],
-        name="Volume",
-        marker_color=vol_colors,
-        marker_opacity=0.45,
-        showlegend=False,
+        name="Volume", marker_color=vol_colors,
+        marker_opacity=0.45, showlegend=False,
     ), row=2, col=1)
-
     fig.update_layout(
         paper_bgcolor=PAPER, plot_bgcolor=BG,
         font=dict(color="#94a3b8", family=SANS, size=10),
@@ -666,11 +704,11 @@ def candlestick_chart(df, ticker, period_label):
                    tickfont=dict(family=MONO, size=10)),
         yaxis2=dict(showgrid=False, zeroline=False, color="#475569",
                     side="right", title=dict(text="VOL", font=dict(size=9, family=MONO))),
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#94a3b8", size=10, family=SANS),
+        legend=dict(bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#94a3b8", size=10, family=SANS),
                     orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
         margin=dict(l=10, r=60, t=10, b=10),
-        height=480,
-        hovermode="x unified",
+        height=480, hovermode="x unified",
     )
     return fig
 
@@ -682,10 +720,8 @@ def returns_chart(df):
     cum_ret = (close / close[0] - 1) * 100
     is_pos  = float(cum_ret[-1]) >= 0
     color   = "#64ffda" if is_pos else "#ff6b6b"
-
     fig = go.Figure(go.Scatter(
-        x=df.index, y=cum_ret,
-        mode="lines",
+        x=df.index, y=cum_ret, mode="lines",
         line=dict(color=color, width=2),
         fill="tozeroy",
         fillcolor="rgba(100,255,218,.06)" if is_pos else "rgba(255,107,107,.06)",
@@ -700,9 +736,7 @@ def returns_chart(df):
                    color="#475569", ticksuffix="%", side="right",
                    tickfont=dict(family=MONO, size=10)),
         margin=dict(l=10, r=60, t=10, b=10),
-        height=300,
-        hovermode="x unified",
-        showlegend=False,
+        height=300, hovermode="x unified", showlegend=False,
     )
     return fig
 
@@ -718,15 +752,12 @@ def revenue_chart(financials):
                 rev_row = inc.loc[label]; break
         if rev_row is None:
             return None
-
         ni_row = None
         for label in ["Net Income", "Net Income Common Stockholders"]:
             if label in inc.index:
                 ni_row = inc.loc[label]; break
-
         dates = [str(c)[:4] for c in rev_row.index[::-1]]
         rev   = [float(v)/1e9 for v in rev_row.values[::-1]]
-
         fig = go.Figure()
         fig.add_trace(go.Bar(
             x=dates, y=rev, name="Revenue ($B)",
@@ -738,7 +769,6 @@ def revenue_chart(financials):
                 x=dates, y=ni, name="Net Income ($B)",
                 marker_color="rgba(100,255,218,.6)", marker_line_width=0,
             ))
-
         fig.update_layout(
             paper_bgcolor=PAPER, plot_bgcolor=BG,
             font=dict(color="#94a3b8", family=SANS, size=10),
@@ -748,10 +778,10 @@ def revenue_chart(financials):
                        color="#475569", ticksuffix="B", side="right",
                        tickfont=dict(family=MONO, size=10)),
             barmode="group",
-            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#94a3b8", size=10, family=SANS),
+            legend=dict(bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#94a3b8", size=10, family=SANS),
                         orientation="h", yanchor="bottom", y=1.01),
-            margin=dict(l=10, r=60, t=10, b=10),
-            height=300,
+            margin=dict(l=10, r=60, t=10, b=10), height=300,
         )
         return fig
     except Exception:
@@ -783,8 +813,7 @@ def progress_row(label, value_str, pct, color="#64ffda"):
 def kv_row(label, value, bottom_border=True):
     border = "border-bottom:1px solid rgba(255,255,255,.04);" if bottom_border else ""
     st.markdown("""
-    <div style="display:flex;justify-content:space-between;
-                padding:8px 0;{border}">
+    <div style="display:flex;justify-content:space-between;padding:8px 0;{border}">
       <div style="font-family:'{sans}',sans-serif;font-size:.82rem;
                   font-weight:500;color:#64748b;">{label}</div>
       <div style="font-family:'{mono}',monospace;font-size:.8rem;
@@ -804,58 +833,40 @@ with st.sidebar:
                   font-weight:700;color:#64ffda;letter-spacing:.04em;">
         ⚡ Alpha Terminal
       </div>
-      <div style="font-family:'Manrope',sans-serif;font-size:.62rem;
-                  font-weight:600;color:#1e293b;letter-spacing:.2em;
-                  text-transform:uppercase;margin-top:4px;">
+      <div style="font-family:'Manrope',sans-serif;font-size:.62rem;font-weight:600;
+                  color:#1e293b;letter-spacing:.2em;text-transform:uppercase;margin-top:4px;">
         Research Platform
       </div>
     </div>
-    <hr style="border:none;border-top:1px solid rgba(255,255,255,.04);
-               margin:0 0 18px 0;">
+    <hr style="border:none;border-top:1px solid rgba(255,255,255,.04);margin:0 0 18px 0;">
     """, unsafe_allow_html=True)
 
-    selected_name = st.selectbox(
-        "SELECT STOCK",
-        list(STOCKS.keys()),
-        index=0,
-    )
+    selected_name = st.selectbox("SELECT STOCK", list(STOCKS.keys()), index=0)
     ticker = STOCKS[selected_name]
 
     if ticker:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("""
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:.58rem;
-                    font-weight:500;color:#334155;letter-spacing:.12em;
-                    text-transform:uppercase;margin-bottom:8px;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:.58rem;font-weight:500;
+                    color:#334155;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;">
           Chart Period
         </div>""", unsafe_allow_html=True)
-        period_label = st.radio(
-            "Period",
-            list(PERIOD_MAP.keys()),
-            index=4,
-            label_visibility="collapsed",
-        )
+        period_label = st.radio("Period", list(PERIOD_MAP.keys()), index=4,
+                                label_visibility="collapsed")
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("""
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:.58rem;
-                    font-weight:500;color:#334155;letter-spacing:.12em;
-                    text-transform:uppercase;margin-bottom:8px;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:.58rem;font-weight:500;
+                    color:#334155;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;">
           Chart Type
         </div>""", unsafe_allow_html=True)
-        chart_type = st.radio(
-            "Chart",
-            ["Candlestick", "Returns (%)"],
-            index=0,
-            label_visibility="collapsed",
-        )
+        chart_type = st.radio("Chart", ["Candlestick", "Returns (%)"], index=0,
+                              label_visibility="collapsed")
 
     st.markdown("""
-    <hr style="border:none;border-top:1px solid rgba(255,255,255,.04);
-               margin:22px 0 14px 0;">
-    <div style="font-family:'IBM Plex Mono',monospace;font-size:.55rem;
-                color:#1e293b;text-align:center;letter-spacing:.06em;
-                line-height:1.7;">
+    <hr style="border:none;border-top:1px solid rgba(255,255,255,.04);margin:22px 0 14px 0;">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:#1e293b;
+                text-align:center;letter-spacing:.06em;line-height:1.7;">
       Market data via Yahoo Finance<br>Cache refreshes every 5 min
     </div>
     """, unsafe_allow_html=True)
@@ -872,13 +883,9 @@ st.markdown("""
     <div class="brand-sub">Professional Stock Intelligence Platform</div>
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
-    <div class="live-badge">
-      <div class="live-dot"></div> LIVE DATA
-    </div>
+    <div class="live-badge"><div class="live-dot"></div> LIVE DATA</div>
     <div style="font-family:'IBM Plex Mono',monospace;font-size:.61rem;
-                color:#334155;letter-spacing:.04em;">
-      {now}
-    </div>
+                color:#334155;letter-spacing:.04em;">{now}</div>
   </div>
 </div>
 """.format(now=now_str), unsafe_allow_html=True)
@@ -936,12 +943,12 @@ if not ticker:
 #  LOAD DATA
 # ═══════════════════════════════════════════════
 with st.spinner(""):
-    info        = fetch_info(ticker)
-    period_cfg  = PERIOD_MAP[period_label]
-    hist_df     = fetch_history(ticker, period=period_cfg[0], interval=period_cfg[1])
-    hist_1y     = fetch_history(ticker, period="1y", interval="1d")
-    news_items  = fetch_news(ticker)
-    financials  = fetch_financials(ticker)
+    info       = fetch_info(ticker)
+    period_cfg = PERIOD_MAP[period_label]
+    hist_df    = fetch_history(ticker, period=period_cfg[0], interval=period_cfg[1])
+    hist_1y    = fetch_history(ticker, period="1y", interval="1d")
+    news_items = fetch_news(ticker)
+    financials = fetch_financials(ticker)
 
 if hist_df.empty and not info:
     st.error("Could not load data for {}. Try another stock.".format(ticker))
@@ -951,31 +958,39 @@ if hist_df.empty and not info:
 # ═══════════════════════════════════════════════
 #  EXTRACT METRICS
 # ═══════════════════════════════════════════════
-company_name = safe_get(info, "longName", ticker)
-sector       = safe_get(info, "sector", "—")
-industry     = safe_get(info, "industry", "—")
-exchange     = safe_get(info, "exchange", "—")
-currency     = safe_get(info, "currency", "USD")
-country      = safe_get(info, "country", "—")
-website      = safe_get(info, "website", "")
-description  = safe_get(info, "longBusinessSummary", "No description available.")
+company_name = safe_get(info, "longName",             ticker)
+sector       = safe_get(info, "sector",               "—")
+industry     = safe_get(info, "industry",             "—")
+exchange     = safe_get(info, "exchange",             "—")
+currency     = safe_get(info, "currency",             "USD")
+country      = safe_get(info, "country",              "—")
+website      = safe_get(info, "website",              "")
+description  = safe_get(info, "longBusinessSummary",  "No description available.")
 employees    = info.get("fullTimeEmployees")
 
-# Price
-current_price = info.get("currentPrice") or info.get("regularMarketPrice")
-prev_close    = info.get("previousClose") or info.get("regularMarketPreviousClose")
-open_price    = info.get("open") or info.get("regularMarketOpen")
-day_high      = info.get("dayHigh")  or info.get("regularMarketDayHigh")
-day_low       = info.get("dayLow")   or info.get("regularMarketDayLow")
+# Price — multiple fallback keys
+current_price = (info.get("currentPrice")
+                 or info.get("regularMarketPrice")
+                 or info.get("ask")
+                 or info.get("bid"))
+prev_close    = (info.get("previousClose")
+                 or info.get("regularMarketPreviousClose"))
+day_high      = info.get("dayHigh")   or info.get("regularMarketDayHigh")
+day_low       = info.get("dayLow")    or info.get("regularMarketDayLow")
 week52_high   = info.get("fiftyTwoWeekHigh")
 week52_low    = info.get("fiftyTwoWeekLow")
-volume        = info.get("volume")   or info.get("regularMarketVolume")
+volume        = info.get("volume")    or info.get("regularMarketVolume")
 avg_volume    = info.get("averageVolume")
 
+# Use history as final price fallback
 if not current_price and not hist_df.empty:
     current_price = float(hist_df["Close"].iloc[-1])
 if not prev_close and not hist_df.empty and len(hist_df) > 1:
     prev_close = float(hist_df["Close"].iloc[-2])
+if not week52_high and not hist_1y.empty:
+    week52_high = float(hist_1y["High"].max())
+if not week52_low and not hist_1y.empty:
+    week52_low  = float(hist_1y["Low"].min())
 
 current_price = float(current_price) if current_price else None
 prev_close    = float(prev_close)    if prev_close    else None
@@ -1076,13 +1091,13 @@ st.markdown("""
 c1,c2,c3,c4,c5,c6,c7,c8 = st.columns(8)
 strip = [
     ("Market Cap",  fmt_large(market_cap)),
-    ("P/E Ratio",   fmt_num(pe_ratio)     if pe_ratio   else "N/A"),
-    ("EPS (TTM)",   "${:.2f}".format(float(eps_ttm)) if eps_ttm else "N/A"),
+    ("P/E Ratio",   fmt_num(pe_ratio)     if pe_ratio   else "—"),
+    ("EPS (TTM)",   "${:.2f}".format(float(eps_ttm)) if eps_ttm else "—"),
     ("Revenue",     fmt_large(revenue_ttm)),
-    ("Beta",        "{:.2f}".format(float(beta)) if beta else "N/A"),
-    ("Div Yield",   "{:.2f}%".format(float(div_yield)*100) if div_yield else "N/A"),
-    ("52W High",    "${:.2f}".format(float(week52_high)) if week52_high else "N/A"),
-    ("52W Low",     "${:.2f}".format(float(week52_low))  if week52_low  else "N/A"),
+    ("Beta",        "{:.2f}".format(float(beta)) if beta else "—"),
+    ("Div Yield",   "{:.2f}%".format(float(div_yield)*100) if div_yield else "—"),
+    ("52W High",    "${:.2f}".format(float(week52_high)) if week52_high else "—"),
+    ("52W Low",     "${:.2f}".format(float(week52_low))  if week52_low  else "—"),
 ]
 for col, (lbl, val) in zip([c1,c2,c3,c4,c5,c6,c7,c8], strip):
     with col:
@@ -1106,7 +1121,6 @@ tabs = st.tabs([
 # ══════════════════════════════════════════
 with tabs[0]:
     section_header("📈", "Price Chart — {}  ·  {}".format(ticker, period_label))
-
     if chart_type == "Candlestick":
         fig = candlestick_chart(hist_df, ticker, period_label)
         if fig:
@@ -1123,7 +1137,6 @@ with tabs[0]:
                             config={"displayModeBar": False})
 
     col1, col2 = st.columns(2, gap="large")
-
     with col1:
         section_header("📏", "Period Statistics")
         if not hist_df.empty:
@@ -1131,7 +1144,6 @@ with tabs[0]:
             pl = float(hist_df["Low"].min())
             pr = ((float(hist_df["Close"].iloc[-1]) /
                    float(hist_df["Close"].iloc[0])) - 1) * 100
-
             ca, cb, cc = st.columns(3)
             with ca: st.metric("Period High",   "${:.2f}".format(ph))
             with cb: st.metric("Period Low",    "${:.2f}".format(pl))
@@ -1159,21 +1171,19 @@ with tabs[0]:
                 Current ${:.2f} &nbsp;·&nbsp; {:.1f}% of 52-week range
               </div>
             </div>""".format(
-                float(week52_low), pos, float(week52_high),
-                current_price, pos),
+                float(week52_low), pos, float(week52_high), current_price, pos),
             unsafe_allow_html=True)
 
     with col2:
         section_header("📉", "Volume & Momentum")
         va, vb = st.columns(2)
         with va:
-            st.metric("Volume",     "{:,.0f}".format(float(volume)) if volume else "N/A")
-            st.metric("Avg Volume", "{:,.0f}".format(float(avg_volume)) if avg_volume else "N/A")
+            st.metric("Volume",     "{:,.0f}".format(float(volume)) if volume else "—")
+            st.metric("Avg Volume", "{:,.0f}".format(float(avg_volume)) if avg_volume else "—")
         with vb:
-            st.metric("Day High",   "${:.2f}".format(float(day_high)) if day_high else "N/A")
-            st.metric("Day Low",    "${:.2f}".format(float(day_low))  if day_low  else "N/A")
+            st.metric("Day High",   "${:.2f}".format(float(day_high)) if day_high else "—")
+            st.metric("Day Low",    "${:.2f}".format(float(day_low))  if day_low  else "—")
 
-        # RSI
         if not hist_1y.empty and len(hist_1y) >= 15:
             try:
                 close_arr = hist_1y["Close"].values.flatten().astype(float)
@@ -1219,19 +1229,17 @@ with tabs[0]:
 # ══════════════════════════════════════════
 with tabs[1]:
     col_l, col_r = st.columns(2, gap="large")
-
     with col_l:
         section_header("💰", "Valuation Metrics")
-
         val_rows = [
-            ("P/E Ratio (TTM)",  fmt_num(pe_ratio)  if pe_ratio  else "N/A", "Price / Earnings (trailing 12M)"),
-            ("P/E Ratio (Fwd)",  fmt_num(fwd_pe)    if fwd_pe    else "N/A", "Price / Forward Earnings"),
-            ("P/B Ratio",        fmt_num(pb_ratio)  if pb_ratio  else "N/A", "Price / Book Value"),
-            ("P/S Ratio",        fmt_num(ps_ratio)  if ps_ratio  else "N/A", "Price / Sales (trailing 12M)"),
-            ("EV / EBITDA",      fmt_num(ev_ebitda) if ev_ebitda else "N/A", "Enterprise Value Multiple"),
-            ("PEG Ratio",        fmt_num(peg_ratio) if peg_ratio else "N/A", "P/E to Growth Rate"),
-            ("EPS (TTM)",        "${:.2f}".format(float(eps_ttm)) if eps_ttm else "N/A", "Trailing 12 Months"),
-            ("EPS (Fwd)",        "${:.2f}".format(float(eps_fwd)) if eps_fwd else "N/A", "Forward Estimate"),
+            ("P/E Ratio (TTM)",  fmt_num(pe_ratio)  if pe_ratio  else "—", "Price / Earnings (trailing 12M)"),
+            ("P/E Ratio (Fwd)",  fmt_num(fwd_pe)    if fwd_pe    else "—", "Price / Forward Earnings"),
+            ("P/B Ratio",        fmt_num(pb_ratio)  if pb_ratio  else "—", "Price / Book Value"),
+            ("P/S Ratio",        fmt_num(ps_ratio)  if ps_ratio  else "—", "Price / Sales (trailing 12M)"),
+            ("EV / EBITDA",      fmt_num(ev_ebitda) if ev_ebitda else "—", "Enterprise Value Multiple"),
+            ("PEG Ratio",        fmt_num(peg_ratio) if peg_ratio else "—", "P/E to Growth Rate"),
+            ("EPS (TTM)",        "${:.2f}".format(float(eps_ttm)) if eps_ttm else "—", "Trailing 12 Months"),
+            ("EPS (Fwd)",        "${:.2f}".format(float(eps_fwd)) if eps_fwd else "—", "Forward Estimate"),
         ]
         for label, value, sub in val_rows:
             a, b = st.columns([5, 3])
@@ -1253,9 +1261,9 @@ with tabs[1]:
 
         section_header("💵", "Dividends")
         d1, d2, d3 = st.columns(3)
-        with d1: st.metric("Div Yield",    "{:.2f}%".format(float(div_yield)*100) if div_yield else "N/A")
-        with d2: st.metric("Div Rate",     "${:.2f}".format(float(div_rate)) if div_rate else "N/A")
-        with d3: st.metric("Payout Ratio", "{:.1f}%".format(float(payout_ratio)*100) if payout_ratio else "N/A")
+        with d1: st.metric("Div Yield",    "{:.2f}%".format(float(div_yield)*100) if div_yield else "—")
+        with d2: st.metric("Div Rate",     "${:.2f}".format(float(div_rate))      if div_rate  else "—")
+        with d3: st.metric("Payout Ratio", "{:.1f}%".format(float(payout_ratio)*100) if payout_ratio else "—")
 
     with col_r:
         section_header("📊", "Profitability & Margins")
@@ -1276,16 +1284,16 @@ with tabs[1]:
         with b1:
             st.metric("Total Debt",     fmt_large(total_debt))
             st.metric("Cash & Equiv.",  fmt_large(cash))
-            st.metric("Book Value/Sh",  "${:.2f}".format(float(book_value)) if book_value else "N/A")
+            st.metric("Book Value/Sh",  "${:.2f}".format(float(book_value)) if book_value else "—")
         with b2:
-            st.metric("Debt / Equity",  "{:.2f}".format(float(debt_equity)/100) if debt_equity else "N/A")
-            st.metric("Current Ratio",  "{:.2f}".format(float(current_ratio)) if current_ratio else "N/A")
+            st.metric("Debt / Equity",  "{:.2f}".format(float(debt_equity)/100) if debt_equity else "—")
+            st.metric("Current Ratio",  "{:.2f}".format(float(current_ratio))   if current_ratio else "—")
             st.metric("Free Cash Flow", fmt_large(free_cf))
 
         section_header("📈", "Growth Rates")
         g1, g2, g3 = st.columns(3)
-        with g1: st.metric("Revenue Growth",  "{:+.1f}%".format(float(rev_growth)*100)  if rev_growth  else "N/A")
-        with g2: st.metric("Earnings Growth", "{:+.1f}%".format(float(earn_growth)*100) if earn_growth else "N/A")
+        with g1: st.metric("Revenue Growth",  "{:+.1f}%".format(float(rev_growth)*100)  if rev_growth  else "—")
+        with g2: st.metric("Earnings Growth", "{:+.1f}%".format(float(earn_growth)*100) if earn_growth else "—")
         with g3: st.metric("Net Income",      fmt_large(net_income))
 
 
@@ -1306,24 +1314,18 @@ with tabs[2]:
     cf  = financials.get("cashflow")
 
     tbl_props = {
-        "background-color": "#0a1628",
-        "color":            "#e2e8f0",
-        "border":           "1px solid #1e293b",
-        "font-family":      "IBM Plex Mono, monospace",
-        "font-size":        "0.74rem",
+        "background-color": "#0a1628", "color": "#e2e8f0",
+        "border": "1px solid #1e293b",
+        "font-family": "IBM Plex Mono, monospace", "font-size": "0.74rem",
     }
     tbl_hdr = [{"selector": "th", "props": [
-        ("background",    "#060b14"),
-        ("color",         "#64ffda"),
-        ("font-family",   "IBM Plex Mono, monospace"),
-        ("font-size",     "0.64rem"),
-        ("text-transform","uppercase"),
-        ("letter-spacing",".06em"),
-        ("border",        "1px solid #1e293b"),
+        ("background","#060b14"),("color","#64ffda"),
+        ("font-family","IBM Plex Mono, monospace"),("font-size","0.64rem"),
+        ("text-transform","uppercase"),("letter-spacing",".06em"),
+        ("border","1px solid #1e293b"),
     ]}]
 
     col1, col2 = st.columns(2, gap="large")
-
     with col1:
         section_header("💰", "Income Statement")
         if inc is not None and not inc.empty:
@@ -1396,22 +1398,18 @@ with tabs[2]:
 # ══════════════════════════════════════════
 with tabs[3]:
     col_l, col_r = st.columns([3, 2], gap="large")
-
     with col_l:
         section_header("🏢", "About  {}".format(company_name))
-
-        if website and website != "N/A":
+        if website and website != "—":
             st.markdown(
                 "<a href='{url}' target='_blank' style='font-family:Manrope,sans-serif;"
                 "font-size:.78rem;font-weight:600;color:#60a5fa;text-decoration:none;'>"
                 "🌐 {url}</a>".format(url=website),
                 unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
-
         st.markdown(
             "<div class='about-text'>{}</div>".format(description),
             unsafe_allow_html=True)
-
         section_header("🏷️", "Classification")
         p1, p2, p3 = st.columns(3)
         with p1: st.metric("Sector",   sector)
@@ -1420,18 +1418,17 @@ with tabs[3]:
 
     with col_r:
         section_header("📋", "Company Snapshot")
-
         snapshot = [
-            ("Company",        company_name),
-            ("Ticker",         ticker),
-            ("Exchange",       exchange),
-            ("Sector",         sector),
-            ("Industry",       industry),
-            ("Country",        country),
-            ("Currency",       currency),
-            ("Employees",      "{:,}".format(int(employees)) if employees else "N/A"),
-            ("Market Cap",     fmt_large(market_cap)),
-            ("Website",        website if website != "N/A" else "—"),
+            ("Company",    company_name),
+            ("Ticker",     ticker),
+            ("Exchange",   exchange),
+            ("Sector",     sector),
+            ("Industry",   industry),
+            ("Country",    country),
+            ("Currency",   currency),
+            ("Employees",  "{:,}".format(int(employees)) if employees else "—"),
+            ("Market Cap", fmt_large(market_cap)),
+            ("Website",    website if website not in ("—","") else "—"),
         ]
         for k, v in snapshot:
             kv_row(k, v)
@@ -1483,7 +1480,6 @@ with tabs[3]:
 # ══════════════════════════════════════════
 with tabs[4]:
     col_news, col_analyst = st.columns([3, 2], gap="large")
-
     with col_news:
         section_header("📰", "Latest News — {}".format(ticker))
         if news_items:
@@ -1505,7 +1501,6 @@ with tabs[4]:
 
     with col_analyst:
         section_header("🎯", "Analyst Consensus")
-
         rec_map = {
             "strong_buy":  ("#64ffda", "STRONG BUY"),
             "buy":         ("#34d399", "BUY"),
@@ -1513,9 +1508,8 @@ with tabs[4]:
             "underperform":("#f97316", "UNDERPERFORM"),
             "sell":        ("#ff6b6b", "SELL"),
         }
-        rc      = (rec_key or "").lower()
-        rc_col, rc_lbl = rec_map.get(rc, ("#94a3b8", rec_key.upper() if rec_key else "N/A"))
-
+        rc = (rec_key or "").lower()
+        rc_col, rc_lbl = rec_map.get(rc, ("#94a3b8", rec_key.upper() if rec_key else "—"))
         st.markdown("""
         <div style="background:#0a1628;border:1px solid rgba(255,255,255,.05);
                     border-radius:12px;padding:22px;margin-bottom:16px;">
@@ -1524,8 +1518,7 @@ with tabs[4]:
             Consensus Rating
           </div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:2rem;
-                      font-weight:700;color:{color};margin:10px 0 5px 0;
-                      letter-spacing:.03em;">
+                      font-weight:700;color:{color};margin:10px 0 5px 0;letter-spacing:.03em;">
             {label}
           </div>
           <div style="font-family:'Manrope',sans-serif;font-size:.76rem;
@@ -1542,22 +1535,22 @@ with tabs[4]:
         if target_price and current_price:
             a1, a2 = st.columns(2)
             with a1:
-                st.metric("Current",  "${:.2f}".format(current_price))
-                st.metric("P/E TTM",  fmt_num(pe_ratio) if pe_ratio else "N/A")
+                st.metric("Current", "${:.2f}".format(current_price))
+                st.metric("P/E TTM", fmt_num(pe_ratio) if pe_ratio else "—")
             with a2:
-                st.metric("Target",   "${:.2f}".format(float(target_price)))
-                st.metric("Fwd P/E",  fmt_num(fwd_pe)  if fwd_pe   else "N/A")
+                st.metric("Target",  "${:.2f}".format(float(target_price)))
+                st.metric("Fwd P/E", fmt_num(fwd_pe)  if fwd_pe   else "—")
 
         section_header("📈", "Risk Indicators")
         risk_items = [
             ("Beta (Market Risk)",
-             "{:.2f}".format(float(beta)) if beta else "N/A",
+             "{:.2f}".format(float(beta)) if beta else "—",
              min(100, abs(float(beta or 1)) * 50), "#fb923c"),
             ("Debt / Equity",
-             "{:.2f}".format(float(debt_equity)/100) if debt_equity else "N/A",
+             "{:.2f}".format(float(debt_equity)/100) if debt_equity else "—",
              min(100, abs(float(debt_equity or 0)) / 300), "#f87171"),
             ("P/E vs Market",
-             "{:.1f}x".format(float(pe_ratio)) if pe_ratio else "N/A",
+             "{:.1f}x".format(float(pe_ratio)) if pe_ratio else "—",
              min(100, float(pe_ratio or 0) / 0.5), "#a78bfa"),
         ]
         for lbl, val, pct, color in risk_items:
