@@ -1003,17 +1003,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown(f"""
-<div class="hero-bar">
-    <!-- LEFT EMPTY (for spacing balance) -->
-    <div style="width:120px;"></div>
+
+    
 
   
   <div class="logo-strip">
+      <!-- LEFT EMPTY (for spacing balance) -->
+    <div style="width:1200px;"></div>
     <div class="logo-pill"><img src="{_VGSOM_SRC}"></div>
     <div class="logo-sep"></div>
     <div class="logo-pill"><img src="{_IITKGP_SRC}"></div>
   </div>
-</div>
+
 """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════
