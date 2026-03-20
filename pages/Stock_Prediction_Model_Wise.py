@@ -2,9 +2,9 @@
 Stock Prediction Lab 2026 - With Sentiment Analysis
 Fonts: IBM Plex Mono (data/labels) + Manrope (body/headings)
 Matches Alpha Terminal visual identity exactly.
-
+"""
 import warningsTF models need: pip install tensorflow-cpu
-warnings.filterwarnings("ignore")"""
+warnings.filterwarnings("ignore")
 
 import streamlit as st
 import yfinance as yf
