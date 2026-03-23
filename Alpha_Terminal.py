@@ -18,6 +18,12 @@ from datetime import timedelta, date, datetime
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+try:
+    from dateutil import parser as _dp
+    _HAS_DATEUTIL = True
+except ImportError:
+    _HAS_DATEUTIL = False
+
 # ═══════════════════════════════════════════════
 #  PAGE CONFIG
 # ═══════════════════════════════════════════════
@@ -469,7 +475,7 @@ PERIOD_MAP = {
 
 
 # ═══════════════════════════════════════════════
-#  SHARED SESSION — browser User-Agent header
+#  SHARED SESSION — kept for potential direct HTTP calls
 # ═══════════════════════════════════════════════
 def _make_session():
     s = requests.Session()
@@ -486,6 +492,8 @@ def _make_session():
     })
     return s
 
+# Note: session is NOT passed to yf.Ticker() — the session= kwarg was
+# removed in yfinance 0.2.38+ and raises TypeError in modern versions.
 YF_SESSION = _make_session()
 
 
@@ -535,30 +543,7 @@ def _clean_df(df):
 def fetch_history(ticker, period="1y", interval="1d"):
     """4-method cloud-proof loader. Returns clean OHLCV DataFrame or empty."""
 
-    # Method 1 — Ticker.history() with session
-    try:
-        df = yf.Ticker(ticker, session=YF_SESSION).history(
-            period=period, interval=interval, auto_adjust=True)
-        df = _clean_df(df)
-        if not df.empty:
-            return df
-    except Exception:
-        pass
-
-    # Method 2 — yf.download() with session
-    try:
-        df = yf.download(
-            ticker, period=period, interval=interval,
-            progress=False, auto_adjust=True, actions=False,
-            session=YF_SESSION,
-        )
-        df = _clean_df(df)
-        if not df.empty:
-            return df
-    except Exception:
-        pass
-
-    # Method 3 — plain Ticker, no session
+    # Method 1 — Ticker.history() (no session kwarg — removed in yfinance 0.2.38+)
     try:
         df = yf.Ticker(ticker).history(
             period=period, interval=interval, auto_adjust=True)
@@ -568,12 +553,36 @@ def fetch_history(ticker, period="1y", interval="1d"):
     except Exception:
         pass
 
-    # Method 4 — yf.download(), no session
+    # Method 2 — yf.download() single ticker
+    try:
+        df = yf.download(
+            ticker, period=period, interval=interval,
+            progress=False, auto_adjust=True, actions=False,
+            group_by="ticker",
+        )
+        df = _clean_df(df)
+        if not df.empty:
+            return df
+    except Exception:
+        pass
+
+    # Method 3 — yf.download() without group_by
     try:
         df = yf.download(
             ticker, period=period, interval=interval,
             progress=False, auto_adjust=True,
         )
+        df = _clean_df(df)
+        if not df.empty:
+            return df
+    except Exception:
+        pass
+
+    # Method 4 — Ticker.history() with repair flag
+    try:
+        df = yf.Ticker(ticker).history(
+            period=period, interval=interval,
+            auto_adjust=True, repair=True)
         df = _clean_df(df)
         if not df.empty:
             return df
@@ -586,31 +595,33 @@ def fetch_history(ticker, period="1y", interval="1d"):
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_info(ticker):
     """
-    Returns info dict. Tries .info (session / no-session),
-    then fills missing keys from fast_info as a guaranteed baseline.
+    Returns info dict. Tries .info (two attempts),
+    then always fills missing keys from fast_info as a guaranteed baseline.
     """
     best = {}
 
-    # Method 1 — .info with session
+    # Method 1 — .info (primary)
     try:
-        info = yf.Ticker(ticker, session=YF_SESSION).info or {}
-        if isinstance(info, dict) and len(info) > 10:
+        info = yf.Ticker(ticker).info or {}
+        if isinstance(info, dict) and len(info) > len(best):
             best = info
     except Exception:
         pass
 
-    # Method 2 — .info without session
+    # Method 2 — .info retry with a short delay (handles transient 429s)
     if len(best) < 10:
         try:
+            import time
+            time.sleep(1)
             info = yf.Ticker(ticker).info or {}
             if isinstance(info, dict) and len(info) > len(best):
                 best = info
         except Exception:
             pass
 
-    # Method 3 — fast_info (rarely blocked, lightweight)
+    # Method 3 — fast_info (always run to fill any missing keys)
     try:
-        fi = yf.Ticker(ticker, session=YF_SESSION).fast_info
+        fi = yf.Ticker(ticker).fast_info
 
         def _fv(attr):
             """Safely read a numeric attribute from fast_info."""
@@ -648,42 +659,72 @@ def fetch_info(ticker):
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_financials(ticker):
-    for use_session in (True, False):
+    for attempt in range(2):
         try:
-            tk = yf.Ticker(ticker, session=YF_SESSION) if use_session else yf.Ticker(ticker)
+            tk = yf.Ticker(ticker)
             return {
                 "income":   tk.income_stmt,
                 "balance":  tk.balance_sheet,
                 "cashflow": tk.cashflow,
             }
         except Exception:
-            pass
+            if attempt == 0:
+                import time
+                time.sleep(1)
     return {}
 
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_news(ticker):
     try:
-        news   = yf.Ticker(ticker, session=YF_SESSION).news or []
+        news   = yf.Ticker(ticker).news or []
         result = []
         now_ts = datetime.now().timestamp()
         for item in news[:12]:
-            content  = item.get("content", item)
-            title    = content.get("title", item.get("title", ""))
-            url      = ""
-            cp_url   = content.get("canonicalUrl", {})
-            if isinstance(cp_url, dict):
-                url = cp_url.get("url", "")
-            if not url:
-                url = content.get("url", item.get("link", ""))
-            pub_time = content.get("pubDate", "")
-            age_h    = 24.0
+            # yfinance >= 0.2.x wraps content inside item["content"]
+            content = item.get("content", item) if isinstance(item, dict) else item
+
+            # Title — try both schemas
+            title = (content.get("title") or item.get("title") or "") if isinstance(content, dict) else ""
+            if not title and isinstance(item, dict):
+                title = item.get("title", "")
+
+            # URL — try multiple key paths used across yfinance versions
+            url = ""
+            if isinstance(content, dict):
+                # New schema: content.canonicalUrl.url or content.clickThroughUrl.url
+                for url_key in ("canonicalUrl", "clickThroughUrl"):
+                    val = content.get(url_key)
+                    if isinstance(val, dict):
+                        url = val.get("url", "")
+                    elif isinstance(val, str):
+                        url = val
+                    if url:
+                        break
+                # Fallback keys
+                if not url:
+                    url = content.get("url") or content.get("link") or ""
+            if not url and isinstance(item, dict):
+                url = item.get("link") or item.get("url") or ""
+
+            # Publication age
+            age_h = 24.0
+            pub_time = (content.get("pubDate") or content.get("displayTime", "")) if isinstance(content, dict) else ""
             if pub_time:
                 try:
-                    from dateutil import parser as dp
-                    age_h = (now_ts - dp.parse(pub_time).timestamp()) / 3600
+                    if _HAS_DATEUTIL:
+                        age_h = (now_ts - _dp.parse(pub_time).timestamp()) / 3600
                 except Exception:
-                    age_h = (now_ts - item.get("providerPublishTime", now_ts - 86400)) / 3600
+                    pass
+            # Fallback to providerPublishTime (old schema, unix timestamp)
+            if age_h == 24.0 and isinstance(item, dict):
+                pts = item.get("providerPublishTime")
+                if pts:
+                    try:
+                        age_h = (now_ts - float(pts)) / 3600
+                    except Exception:
+                        pass
+
             if title:
                 result.append({
                     "title":   title,
@@ -833,14 +874,32 @@ def revenue_chart(financials):
                 ni_row = inc.loc[lbl]
                 break
         dates = [str(c)[:4] for c in rev_row.index[::-1]]
-        rev   = [float(v) / 1e9 for v in rev_row.values[::-1]]
+        rev   = []
+        for v in rev_row.values[::-1]:
+            try:
+                rev.append(float(v) / 1e9 if pd.notna(v) else None)
+            except Exception:
+                rev.append(None)
+        # Filter out None pairs so the chart doesn't break
+        valid_dates = [d for d, v in zip(dates, rev) if v is not None]
+        valid_rev   = [v for v in rev if v is not None]
+        if not valid_rev:
+            return None
         fig   = go.Figure()
-        fig.add_trace(go.Bar(x=dates, y=rev, name="Revenue ($B)",
+        fig.add_trace(go.Bar(x=valid_dates, y=valid_rev, name="Revenue ($B)",
                              marker_color="rgba(96,165,250,.7)", marker_line_width=0))
         if ni_row is not None:
-            ni = [float(v) / 1e9 for v in ni_row.values[::-1]]
-            fig.add_trace(go.Bar(x=dates, y=ni, name="Net Income ($B)",
-                                 marker_color="rgba(100,255,218,.6)", marker_line_width=0))
+            ni_raw = []
+            for v in ni_row.values[::-1]:
+                try:
+                    ni_raw.append(float(v) / 1e9 if pd.notna(v) else None)
+                except Exception:
+                    ni_raw.append(None)
+            ni_dates = [d for d, v in zip(dates, ni_raw) if v is not None]
+            ni_vals  = [v for v in ni_raw if v is not None]
+            if ni_vals:
+                fig.add_trace(go.Bar(x=ni_dates, y=ni_vals, name="Net Income ($B)",
+                                     marker_color="rgba(100,255,218,.6)", marker_line_width=0))
         fig.update_layout(
             paper_bgcolor=PAPER, plot_bgcolor=BG,
             font=dict(color="#94a3b8", family=SANS, size=10),
